@@ -1,0 +1,58 @@
+﻿<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alicerce ERP: autorizar acesso</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:28rem;margin:10vh auto;padding:0 1rem;color:#1a1a1a}
+  button{font:inherit;padding:.6rem 1rem;border-radius:.5rem;border:1px solid #888;cursor:pointer;margin-right:.5rem}
+  button.p{background:#1a1a1a;color:#fff}
+  input{font:inherit;padding:.5rem;width:100%;box-sizing:border-box;margin:.5rem 0}
+  .m{color:#555;font-size:.9rem}
+  @media(prefers-color-scheme:dark){body{background:#111;color:#eee}input{background:#222;color:#eee}button{color:#eee}}
+</style>
+</head>
+<body>
+<h1>Alicerce ERP</h1>
+<div id="app"><p>Carregando…</p></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const sb = supabase.createClient("https://soreefcgfbtdcytejtba.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvcmVlZmNnZmJ0ZGN5dGVqdGJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0NjkyOTIsImV4cCI6MjEwOTA0NTI5Mn0.q3PluaA7fLPtv2eRyPNQt6M6kQdmR-CL6VOphjbwsx4");
+const app = document.getElementById("app");
+const id = new URLSearchParams(location.search).get("authorization_id");
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function main() {
+  if (!id) { app.innerHTML = "<p>Pedido de autorização inválido.</p>"; return; }
+  const { data: s } = await sb.auth.getSession();
+  if (!s.session) return login();
+  const { data, error } = await sb.auth.oauth.getAuthorizationDetails(id);
+  if (error) { app.innerHTML = "<p>Erro: " + esc(error.message) + "</p>"; return; }
+  if (data.redirect_url) { location.href = data.redirect_url; return; }
+  app.innerHTML = `<p><strong>${esc(data.client?.name || "Um aplicativo")}</strong> quer acessar o Alicerce ERP como <strong>${esc(s.session.user.email)}</strong>.</p>
+    <p class="m">Ele poderá consultar e preparar operações no seu nome. Gravações exigem confirmação sua.</p>
+    <button class="p" id="ok">Permitir</button><button id="no">Negar</button>`;
+  document.getElementById("ok").onclick = () => decidir(true);
+  document.getElementById("no").onclick = () => decidir(false);
+}
+async function decidir(aprova) {
+  const r = aprova ? await sb.auth.oauth.approveAuthorization(id) : await sb.auth.oauth.denyAuthorization(id);
+  if (r.error) { app.innerHTML = "<p>Erro: " + esc(r.error.message) + "</p>"; return; }
+  location.href = r.data.redirect_url;
+}
+function login() {
+  app.innerHTML = `<p>Entre para continuar. Enviaremos um link para o seu e-mail.</p>
+    <input id="em" type="email" placeholder="seu@email.com" autocomplete="email"><button class="p" id="go">Enviar link</button><p id="msg" class="m"></p>`;
+  document.getElementById("go").onclick = async () => {
+    const email = document.getElementById("em").value.trim();
+    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.href } });
+    document.getElementById("msg").textContent = error ? "Não foi possível enviar: " + error.message : "Link enviado. Abra o e-mail neste mesmo navegador.";
+  };
+}
+sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN") main(); });
+main();
+</script>
+</body>
+</html>
+
